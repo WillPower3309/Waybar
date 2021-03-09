@@ -76,18 +76,7 @@ static std::vector<std::string> search_prefix()
     return prefixes;
 }
 
-static Glib::RefPtr<Gdk::Pixbuf> load_icon_from_file(std::string icon_path, int size)
-{
-    try {
-        auto pb = Gdk::Pixbuf::create_from_file(icon_path, size, size);
-        return pb;
-    } catch(...) {
-        return {};
-    }
-}
-
-/* Method 1 - get the correct icon name from the desktop file */
-static std::string get_from_desktop_app_info(const std::string &app_id)
+Glib::RefPtr<Gio::DesktopAppInfo> gen_app_info(const std::string app_id)
 {
     static std::vector<std::string> prefixes = search_prefix();
 
@@ -110,6 +99,24 @@ static std::string get_from_desktop_app_info(const std::string &app_id)
             for (auto& suffix : suffixes)
                 if (!app_info)
                     app_info = Gio::DesktopAppInfo::create_from_filename(prefix + folder + app_id + suffix);
+
+    return app_info;
+}
+
+static Glib::RefPtr<Gdk::Pixbuf> load_icon_from_file(std::string icon_path, int size)
+{
+    try {
+        auto pb = Gdk::Pixbuf::create_from_file(icon_path, size, size);
+        return pb;
+    } catch(...) {
+        return {};
+    }
+}
+
+/* Method 1 - get the correct icon name from the desktop file */
+static std::string get_from_desktop_app_info(const std::string &app_id)
+{
+    Glib::RefPtr<Gio::DesktopAppInfo> app_info = gen_app_info(app_id);
 
     if (app_info && app_info->get_icon())
         return app_info->get_icon()->to_string();
@@ -399,6 +406,36 @@ void Task::handle_app_id(const char *app_id)
         icon_.show();
     else
         spdlog::debug("Couldn't find icon for {}", app_id_);
+}
+
+void Task::handle_name(const char *app_id)
+{
+    Glib::RefPtr<Gio::DesktopAppInfo> app_info = gen_app_info(app_id);
+
+    if(app_info) {
+        app_id_ = app_info->get_display_name();
+    }
+    else {
+        app_id_ = app_id;
+    }
+
+    if (!with_icon_)
+        return;
+
+    int icon_size = config_["icon-size"].isInt() ? config_["icon-size"].asInt() : 16;
+    bool found = false;
+    for (auto& icon_theme : tbar_->icon_themes()) {
+        if (image_load_icon(icon_, icon_theme, app_id_, icon_size)) {
+            found = true;
+            break;
+        }
+    }
+
+    if (found)
+        icon_.show();
+    else
+        spdlog::debug("Couldn't find icon for {}", app_id_);
+
 }
 
 void Task::handle_output_enter(struct wl_output *output)
